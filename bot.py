@@ -1,4 +1,5 @@
 import os
+import json
 import datetime
 import requests
 
@@ -162,7 +163,7 @@ def check_week():
     except Exception as e:
         return e
     
-def check_zameni():
+def check_zameni(day="today"):
     url = "https://menu.sttec.yar.ru/timetable/rasp_first.html"
     try:
         response = requests.get(url)
@@ -184,31 +185,69 @@ def check_zameni():
                         }
                         replacements.append(replacement_info)
             time = check_time()
-            day_of_week = datetime.datetime.now().strftime("%A")
+            current_day = datetime.datetime.now()
+            day_of_week = current_day.strftime("%A")
             check = check_week()
-            if check == "знаменатель":
+
+            if day == "today":
                 if time == "<":
-                    for i in replacements:
-                        schedule_znamenatel_copy[days_in_numbers.get(day_of_week)[0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>. {i['auditory']} (замена)"
-                schedule = f"<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (знаменатель, {days_in_numbers.get(day_of_week)[1]})\n\n"
-                for k, v in schedule_znamenatel_copy[days_in_numbers.get(day_of_week)[0]].items():
-                    if v != "":
-                        schedule += f"<b>{k} пара:</b>  {v}\n"
-            elif check == "числитель":
-                if time == "<":
-                    for i in replacements:
-                        schedule_chislitel_copy[days_in_numbers.get(day_of_week)[0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>, {i['auditory']} (замена)"
-                schedule = "<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (Числитель)\n\n"
-                for k, v in schedule_chislitel_copy[days_in_numbers.get(day_of_week)[0]].items():
-                    if v != "":
-                        schedule += f"<b>{k} пара:</b>  {v}\n"
-            else:
-                schedule = f"Ошибка получения данных:\n\n{check}"
-            return schedule
+                    if check == "знаменатель":
+                        for i in replacements:
+                            schedule_znamenatel_copy[days_in_numbers.get(day_of_week)[0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>. {i['auditory']} (замена)"
+                        schedule = f"<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (знаменатель, {days_in_numbers.get(day_of_week)[1]})\n\n"
+                        for k, v in schedule_znamenatel_copy[days_in_numbers.get(day_of_week)[0]].items():
+                            if v != "":
+                                schedule += f"<b>{k} пара:</b>  {v}\n"
+                    elif check == "числитель":
+                        for i in replacements:
+                            schedule_chislitel_copy[days_in_numbers.get(day_of_week)[0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>, {i['auditory']} (замена)"
+                        schedule = f"<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (числитель, {days_in_numbers.get(day_of_week)[1]})\n\n"
+                        for k, v in schedule_chislitel_copy[days_in_numbers.get(day_of_week)[0]].items():
+                            if v != "":
+                                schedule += f"<b>{k} пара:</b>  {v}\n"
+                    else:
+                        schedule = f"Ошибка получения данных:\n\n{check}"
+                    with open("./data.json", "r", encoding="utf-8") as jf:
+                        fd = json.load(jf)
+                    fd["lastDay"] = schedule
+                    with open("./data.json", "w", encoding="utf-8") as jf:
+                        json.dump(fd, jf, indent=4)
+                else:
+                    with open("./data.json", "r", encoding="utf-8") as jf:
+                        fd = json.load(jf)
+                    schedule = fd["lastDay"]
+                return schedule if schedule else "Ошибка: нет данных"
+            elif day == "tomorrow":
+                current_day_number = days_in_numbers[day_of_week][0]
+                next_day_number = (current_day_number + 1) % 7
+                next_day_name = [day for day, info in days_in_numbers.items() if info[0] == next_day_number][0]
+                if check == "знаменатель":
+                    if time == ">":
+                        for i in replacements:
+                            schedule_znamenatel[days_in_numbers[next_day_name][0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>, {i['auditory']} (замена)"
+                    schedule = f"<b>РАСПИСАНИЕ НА ЗАВТРА</b> (знаменатель, {days_in_numbers[next_day_name][1]})\n\n"
+                    for k, v in schedule_znamenatel[days_in_numbers[next_day_name][0]].items():
+                        if v != "":
+                            schedule += f"<b>{k} пара:</b>  {v}\n"
+                    if time == "<":
+                        schedule += "\n<i>Замен ещё нет. Обновление будет после 12:00.</i>"
+                elif check == "числитель":
+                    if time == ">":
+                        for i in replacements:
+                            schedule_chislitel[days_in_numbers[next_day_name][0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>, {i['auditory']} (замена)"
+                    schedule = f"<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (числитель, {days_in_numbers[next_day_name][1]})\n\n"
+                    for k, v in schedule_chislitel[days_in_numbers[next_day_name][0]].items():
+                        if v != "":
+                            schedule += f"<b>{k} пара:</b>  {v}\n"
+                    if time == "<":
+                        schedule += "\n<i>Замен ещё нет. Обновление будет после 12:00.</i>"
+                else:
+                    schedule = f"❌ Ошибка получения данных:\n\n{check}"
+                return schedule
         else:
             return "❌ Ошибка получения замен ❌"
     except Exception as e:
-        return e
+        return f"❌ Возникла ошибка:\n{e}"
     
 # Обработчик кнопки, команды "/start"
 @bot.message_handler(commands=['start'])
@@ -232,29 +271,23 @@ def help_command(message):
 # Обработчик кнопки, команды "/today"
 @bot.message_handler(func=lambda message: message.text == '/today')
 def today_command(message):
-    schedule = check_zameni()
+    schedule = check_zameni(day="today")
     bot.send_message(message.chat.id, text=f"{schedule}", parse_mode="HTML")
 
 # Обработчик кнопки, команды "/tomorrow"
-# @bot.message_handler(func=lambda message: message.text == '/tomorrow')
-# def tomorrow_command(message):
-#     today = datetime.datetime.now()
-#     day_of_week = today.strftime("%A")
-#     schedule = "РАСПИСАНИЕ НА ЗАВТРА"
-#     if check_time() == ">":
-#         # Если текущее время больше 12:00
-#         for k, v in schedule_chislitel[days_in_numbers.get(day_of_week)].items():
-#             schedule += f"**{k}:** {v}\n"
-#     else:
-#         # Если текущее время меньше 12:00
-#         for k, v in schedule_chislitel[days_in_numbers.get(day_of_week)].items():
-#             schedule += f"**{k}:** {v}\n"
-#     bot.send_message(message.chat.id, text=f"{schedule}")
+@bot.message_handler(func=lambda message: message.text == '/tomorrow')
+def tomorrow_command(message):
+    schedule = check_zameni(day="tomorrow")
+    bot.send_message(message.chat.id, text=f"{schedule}", parse_mode="HTML")
     
 # Обработчик кнопки, команды "/d"
 @bot.message_handler(func=lambda message: message.text == '/d')
 def work_command(message):
-    bot.send_message(message.chat.id, text="ГРАФИК ДЕЖУРСТВА")
+    with open("./data.json", "r", encoding="utf-8") as jf:
+        fd = json.load(jf)
+    day_of_week = days_in_numbers[datetime.datetime.now().strftime("%A")][1]
+    current_d = dezhurstva[fd["dezh"]-1]
+    bot.send_message(message.chat.id, text=f"<b>ГРАФИК ДЕЖУРСТВА</b> (сегодня, {day_of_week})\n\n{current_d}", parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_worker(call):
