@@ -2,10 +2,12 @@ import os
 import json
 import datetime
 import requests
+# import asyncio
 
 from bs4 import BeautifulSoup
 import telebot
 from telebot import types
+# from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
 import pytz
 
@@ -134,10 +136,26 @@ days_in_numbers = {
     "Thursday": [3, "четверг"],
     "Friday": [4, "пятница"],
     "Saturday": [5, "суббота"],
+    "Sunday": [6, "воскресенье"],
 }
 
 # Инициализация бота
 bot = telebot.TeleBot(TOKEN)
+# bot = AsyncTeleBot(TOKEN)
+
+# Обновление состояний раз в время
+# async def update_state():
+#     while True:
+#         await asyncio.sleep(60)
+#         with open("./data.json", "r", encoding="utf-8") as jf:
+#             fd = json.load(jf)
+#         day_of_week = datetime.datetime.now().strftime("%A")
+#         if days_in_numbers[day_of_week][0] != fd["today"]:
+#             fd["today"] = days_in_numbers[day_of_week][0]
+#             with open("./data.json", "w", encoding="utf-8") as jf:
+#                 json.dump(fd, jf, indent=4)
+#         else:
+#             print("Good")
 
 def check_time():
     moscow_tz = pytz.timezone('Europe/Moscow')
@@ -216,7 +234,7 @@ def check_zameni(day="today"):
                     with open("./data.json", "r", encoding="utf-8") as jf:
                         fd = json.load(jf)
                     schedule = fd["lastDay"]
-                return schedule if schedule else "Ошибка: нет данных"
+                return schedule if schedule else "❌ Ошибка: нет данных ❌"
             elif day == "tomorrow":
                 current_day_number = days_in_numbers[day_of_week][0]
                 next_day_number = (current_day_number + 1) % 7
@@ -230,17 +248,17 @@ def check_zameni(day="today"):
                         if v != "":
                             schedule += f"<b>{k} пара:</b>  {v}\n"
                     if time == "<":
-                        schedule += "\n<i>Замен ещё нет. Обновление будет после 12:00.</i>"
+                        schedule += "\n<i>Замен на завтра ещё нет. Обновление будет после 12:00.</i>"
                 elif check == "числитель":
                     if time == ">":
                         for i in replacements:
                             schedule_chislitel[days_in_numbers[next_day_name][0]][str(i["number"])] = f"<u>{i['dis_zameta']}</u>, {i['auditory']} (замена)"
-                    schedule = f"<b>РАСПИСАНИЕ НА СЕГОДНЯ</b> (числитель, {days_in_numbers[next_day_name][1]})\n\n"
+                    schedule = f"<b>РАСПИСАНИЕ НА ЗАВТРА</b> (числитель, {days_in_numbers[next_day_name][1]})\n\n"
                     for k, v in schedule_chislitel[days_in_numbers[next_day_name][0]].items():
                         if v != "":
                             schedule += f"<b>{k} пара:</b>  {v}\n"
                     if time == "<":
-                        schedule += "\n<i>Замен ещё нет. Обновление будет после 12:00.</i>"
+                        schedule += "\n<i>Замен на завтра ещё нет. Обновление будет после 12:00.</i>"
                 else:
                     schedule = f"❌ Ошибка получения данных:\n\n{check}"
                 return schedule
@@ -285,9 +303,16 @@ def tomorrow_command(message):
 def work_command(message):
     with open("./data.json", "r", encoding="utf-8") as jf:
         fd = json.load(jf)
-    day_of_week = days_in_numbers[datetime.datetime.now().strftime("%A")][1]
+    day_of_week = days_in_numbers[datetime.datetime.now().strftime("%A")]
+    if day_of_week[0] != fd["today"]:
+        fd["today"] = day_of_week[0]
+        with open("./data.json", "w", encoding="utf-8") as jf:
+            json.dump(fd, jf, indent=4)
     current_d = dezhurstva[fd["dezh"]-1]
-    bot.send_message(message.chat.id, text=f"<b>ГРАФИК ДЕЖУРСТВА</b> (сегодня, {day_of_week})\n\n{current_d}", parse_mode="HTML")
+    if days_in_numbers[datetime.datetime.now().strftime("%A")][0] != 6:
+        bot.send_message(message.chat.id, text=f"<b>ГРАФИК ДЕЖУРСТВА</b> (сегодня, {day_of_week[1]})\n\n{current_d}", parse_mode="HTML")
+    else:
+        bot.send_message(message.chat.id, text=f"<b>ГРАФИК ДЕЖУРСТВА НА ЗАВТРА</b> (понедельник)\n\n{current_d}", parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_worker(call):
@@ -301,5 +326,12 @@ def callback_worker(call):
         bot.send_message(call.message.chat.id, text="Доступные команды:\n\n/today - расписание на текущий день с учетом замен.\n/tomorrow - расписание на завтрашний день с учетом замен.\n/d - график дежурства на вчера, сегодня и завтра", reply_markup=markup)
 
 
-# Запуск
+# Запуск бота
 bot.polling(none_stop=True, interval=0)
+# async def main():
+#     asyncio.create_task(update_state())
+#     await bot.polling(none_stop=True, interval=0)
+
+# if __name__ == "__main__":
+#     loop = asyncio.get_event_loop()
+#     loop.run_until_complete(main())
